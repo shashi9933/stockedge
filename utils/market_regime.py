@@ -201,7 +201,7 @@ def plot_market_regime(data, regime_info):
             x=df.index,
             y=df['SMA_Short'],
             mode='lines',
-            name=f"SMA ({df.columns[df.columns.str.contains('SMA_Short')].str.extract('SMA_Short(_)?(\\d+)?')[1].iloc[0]})",
+            name="Short-term SMA",
             line=dict(color='blue', width=1)
         ),
         row=1, col=1
@@ -212,7 +212,7 @@ def plot_market_regime(data, regime_info):
             x=df.index,
             y=df['SMA_Long'],
             mode='lines',
-            name=f"SMA ({df.columns[df.columns.str.contains('SMA_Long')].str.extract('SMA_Long(_)?(\\d+)?')[1].iloc[0]})",
+            name="Long-term SMA",
             line=dict(color='red', width=1)
         ),
         row=1, col=1
