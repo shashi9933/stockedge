@@ -559,18 +559,31 @@ def time_series_prediction(data, prediction_days=30):
         st.warning(f"Combined time series model failed: {e}. Using ARIMA only.")
         return arima_model_prediction(data, prediction_days)
 
-def ensemble_prediction(data, prediction_days=30):
+def ensemble_prediction(data, prediction_days=30, regime_weights=None):
     """
-    Ensemble prediction using multiple models with dynamic weighting.
+    Ensemble prediction using multiple models with dynamic weighting based on market regime.
     
     Args:
         data (pd.DataFrame): Stock data DataFrame
         prediction_days (int): Number of days to predict forward
+        regime_weights (dict, optional): Model weights based on market regime
         
     Returns:
         tuple: (predictions, confidence, model_weights)
     """
     try:
+        # Import market regime detection if needed
+        from utils.market_regime import detect_market_regime, get_recommended_settings
+        
+        # Detect market regime for adaptive model selection
+        regime_info = detect_market_regime(data)
+        current_regime = regime_info['regime']
+        
+        # Get recommended settings based on market regime if not provided
+        if regime_weights is None:
+            recommended_settings = get_recommended_settings(current_regime)
+            regime_weights = recommended_settings['model_weights']
+        
         # Get predictions from individual models - wrap each in try-except to ensure robustness
         try:
             linear_preds, linear_conf = linear_regression_prediction(data, prediction_days)
@@ -658,10 +671,16 @@ def ensemble_prediction(data, prediction_days=30):
         predictions = []
         confidence = []
         
-        # Evaluate recent model accuracy for better weighting
-        # We actually don't have validation data, but we can use model quality metrics (confidence)
-        # as a proxy for expected performance
+        # Initialize base regime weights
+        base_weights = {
+            'Linear Regression': regime_weights.get('Linear Regression', 0.2),
+            'Quadratic Regression': regime_weights.get('Quadratic Regression', 0.2),
+            'Fourier Transform': regime_weights.get('Fourier Transform', 0.2),
+            'Time Series': regime_weights.get('Time Series', 0.2),
+            'ARIMA': regime_weights.get('ARIMA', 0.2)
+        }
         
+        # Apply confidence-based adjustments for each day in the prediction horizon
         for i in range(prediction_days):
             # Get confidence scores for this prediction day
             day_confs = [
@@ -672,27 +691,67 @@ def ensemble_prediction(data, prediction_days=30):
                 arima_conf[i]
             ]
             
-            # Apply time horizon adjustment - different models are better at different horizons
-            # Short term: time series and ARIMA tend to be more accurate
-            # Long term: trend-based models can be better
+            # Apply time horizon adjustment with regime awareness
+            if current_regime == "Trending Up":
+                # In uptrends, favor trend-following models for longer horizons
+                if i < prediction_days // 3:
+                    # Short-term: time series and ARIMA are most accurate
+                    day_confs[3] *= 1.3  # time_series model
+                    day_confs[4] *= 1.3  # ARIMA model
+                elif i > (2 * prediction_days) // 3:
+                    # Long-term: favor linear regression for extended uptrends
+                    day_confs[0] *= 1.4  # linear model
             
-            if i < prediction_days // 3:  # First third of the prediction period
-                # Give higher weight to time series models for short-term predictions
-                day_confs[3] *= 1.2  # time_series model
-                day_confs[4] *= 1.3  # ARIMA model
-            elif i > (2 * prediction_days) // 3:  # Last third of the prediction period
-                # Give higher weight to regression models for long-term predictions
-                day_confs[0] *= 1.1  # linear model
-                day_confs[1] *= 1.1  # quadratic model
-                day_confs[2] *= 1.1  # fourier model
+            elif current_regime == "Trending Down":
+                # In downtrends, favor models that can capture acceleration
+                if i < prediction_days // 3:
+                    # Short-term: ARIMA can capture recent momentum
+                    day_confs[4] *= 1.4  # ARIMA model
+                    day_confs[1] *= 1.2  # Quadratic model
+                else:
+                    # Medium to longer term: quadratic can capture accelerating downtrends
+                    day_confs[1] *= 1.4  # Quadratic model
             
-            # Normalize weights
+            elif current_regime == "Range-Bound":
+                # In range-bound markets, favor oscillating models
+                day_confs[2] *= 1.3  # Fourier model works better for oscillations
+                day_confs[1] *= 1.2  # Quadratic can capture local curves
+            
+            # Create baseline weights from regime recommendations
+            base_day_weights = [
+                base_weights['Linear Regression'],
+                base_weights['Quadratic Regression'],
+                base_weights['Fourier Transform'],
+                base_weights['Time Series'],
+                base_weights['ARIMA']
+            ]
+            
+            # Blend regime-based weights with confidence-based weights
+            # 70% regime weights, 30% confidence weights
+            regime_confidence = regime_info['confidence']
+            if regime_confidence > 0.7:
+                # If we're confident in the regime, use more regime-based weights
+                regime_weight_factor = 0.7
+            else:
+                # If regime is less clear, rely more on model confidence
+                regime_weight_factor = 0.4
+                
+            # Normalize confidence weights
             total_conf = sum(day_confs)
             if total_conf > 0:
-                weights = [conf / total_conf for conf in day_confs]
+                conf_weights = [conf / total_conf for conf in day_confs]
             else:
-                # Equal weights if all confidences are 0
-                weights = [0.2, 0.2, 0.2, 0.2, 0.2]  
+                conf_weights = [0.2, 0.2, 0.2, 0.2, 0.2]
+                
+            # Blend weights
+            weights = []
+            for j in range(len(base_day_weights)):
+                blended_weight = (base_day_weights[j] * regime_weight_factor) + (conf_weights[j] * (1 - regime_weight_factor))
+                weights.append(blended_weight)
+                
+            # Renormalize blended weights
+            total_weight = sum(weights)
+            weights = [w / total_weight for w in weights]
             
             # Calculate weighted prediction
             day_preds = [
@@ -707,8 +766,24 @@ def ensemble_prediction(data, prediction_days=30):
             
             # Store results
             predictions.append(weighted_pred)
-            confidence.append(max(day_confs))  # Overall confidence is the highest individual confidence
+            
+            # Overall confidence is weighted by both model confidence and regime confidence
+            model_confidence = max(day_confs)
+            overall_confidence = (model_confidence * 0.7) + (regime_info['confidence'] * 0.3)
+            confidence.append(overall_confidence)
+            
             model_weights.append(weights)
+        
+        # Store the detected regime in the session state for reference
+        if 'market_regime' not in st.session_state:
+            st.session_state.market_regime = {}
+            
+        st.session_state.market_regime = {
+            'regime': current_regime,
+            'confidence': regime_info['confidence'],
+            'regime_change': regime_info['regime_change'],
+            'duration': regime_info['duration']
+        }
         
         return predictions, confidence, model_weights
         
@@ -726,6 +801,17 @@ def ensemble_prediction(data, prediction_days=30):
             
             # Simple equal weights for the two models
             model_weights = [[0.5, 0, 0, 0.5, 0] for _ in range(prediction_days)]
+            
+            # Set a default regime in session state
+            if 'market_regime' not in st.session_state:
+                st.session_state.market_regime = {}
+                
+            st.session_state.market_regime = {
+                'regime': "Unknown",
+                'confidence': 0.0,
+                'regime_change': False,
+                'duration': 0
+            }
             
             return predictions, confidence, model_weights
             
@@ -746,6 +832,17 @@ def ensemble_prediction(data, prediction_days=30):
             
             # Mock weights for UI consistency
             model_weights = [[0.2, 0.2, 0.2, 0.2, 0.2] for _ in range(prediction_days)]
+            
+            # Set a default regime in session state
+            if 'market_regime' not in st.session_state:
+                st.session_state.market_regime = {}
+                
+            st.session_state.market_regime = {
+                'regime': "Unknown",
+                'confidence': 0.0,
+                'regime_change': False,
+                'duration': 0
+            }
             
             return predictions, confidence, model_weights
 
