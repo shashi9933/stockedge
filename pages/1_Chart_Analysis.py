@@ -11,39 +11,72 @@ from utils.chart_helpers import (
 )
 from utils.technical_indicators import detect_candlestick_patterns
 
-# Set page configuration
+# Custom CSS
+custom_css = """
+<style>
+    :root {
+        --primary: #3B82F6;
+        --success: #10B981;
+        --danger: #EF4444;
+        --dark-bg: #0F1419;
+        --card-bg: #1A1F2E;
+        --border-color: #2D3748;
+        --text-primary: #E5E7EB;
+        --text-secondary: #9CA3AF;
+    }
+    
+    [data-testid="metric-container"] {
+        background-color: var(--card-bg);
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+</style>
+"""
+
 st.set_page_config(
-    page_title="Chart Analysis - Stock Market Analysis Platform",
-    page_icon="📈",
+    page_title="Chart Analysis - StockSense",
+    page_icon="📊",
     layout="wide"
 )
 
-st.title("Chart Analysis")
-st.markdown("Interactive chart analysis with advanced features.")
+st.markdown(custom_css, unsafe_allow_html=True)
+
+st.markdown("""
+<div style="text-align: center; padding: 20px 0; border-bottom: 1px solid #2D3748;">
+    <h1 style="margin: 0; color: #E5E7EB;">📊 Chart Analysis</h1>
+    <p style="color: #9CA3AF; margin: 5px 0;">Advanced charting & technical patterns</p>
+</div>
+""", unsafe_allow_html=True)
 
 # Check if stock data exists in session state
 if 'stock_data' not in st.session_state or st.session_state.stock_data is None:
-    st.warning("Please select a stock from the home page first.")
+    st.warning("⚠️ Please select a stock from the home page first.")
     st.stop()
 
 # Get stock data from session state
 stock_data = st.session_state.stock_data
 stock_symbol = st.session_state.selected_stock
 
-# Chart controls
-st.sidebar.header("Chart Settings")
+st.markdown("")
 
-# Chart type selection
-chart_type = st.sidebar.selectbox(
-    "Chart Type",
-    ["Candlestick", "OHLC", "Line"]
-)
+# Chart controls in a nice layout
+col1, col2 = st.columns(2)
 
-# Time range selection
-time_range = st.sidebar.selectbox(
-    "Time Range",
-    ["All Data", "1 Month", "3 Months", "6 Months", "1 Year"]
-)
+with col1:
+    chart_type = st.selectbox(
+        "Chart Type",
+        ["Candlestick", "OHLC", "Line"],
+        help="Choose your preferred chart visualization"
+    )
+
+with col2:
+    time_range = st.selectbox(
+        "Time Range",
+        ["All Data", "1 Month", "3 Months", "6 Months", "1 Year"],
+        help="Filter the chart data by time period"
+    )
 
 # Filter data based on selected time range
 end_date = stock_data.index[-1]
@@ -63,49 +96,53 @@ else:
     filtered_data = stock_data.copy()
 
 # Additional chart features
-st.sidebar.subheader("Chart Features")
-show_volume = st.sidebar.checkbox("Show Volume", value=True)
-show_pivot_points = st.sidebar.checkbox("Show Pivot Points")
-detect_patterns = st.sidebar.checkbox("Detect Candlestick Patterns")
+st.markdown("### ⚙️ Chart Features")
+col_feat1, col_feat2, col_feat3 = st.columns(3)
+with col_feat1:
+    show_volume = st.checkbox("📊 Show Volume", value=True)
+with col_feat2:
+    show_pivot_points = st.checkbox("📍 Pivot Points")
+with col_feat3:
+    detect_patterns = st.checkbox("🔍 Detect Patterns")
 
-# Create chart
+st.markdown("---")
+
+# Create chart with better styling
 if chart_type == "Candlestick":
     fig = create_candlestick_chart(
         filtered_data, 
         title=f"{stock_symbol} - Candlestick Chart",
         show_volume=show_volume
     )
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor='rgba(26, 31, 46, 1)',
+        plot_bgcolor='rgba(26, 31, 46, 1)',
+        font=dict(color='#E5E7EB'),
+        height=700
+    )
 elif chart_type == "OHLC":
-    if show_volume:
-        fig = go.Figure(
-            data=[
-                go.Ohlc(
-                    x=filtered_data.index,
-                    open=filtered_data['Open'],
-                    high=filtered_data['High'],
-                    low=filtered_data['Low'],
-                    close=filtered_data['Close'],
-                    name="Price"
-                )
-            ]
-        )
-    else:
-        fig = go.Figure()
-        fig.add_trace(
+    fig = go.Figure(
+        data=[
             go.Ohlc(
                 x=filtered_data.index,
                 open=filtered_data['Open'],
                 high=filtered_data['High'],
                 low=filtered_data['Low'],
                 close=filtered_data['Close'],
+                increasing_line_color='#10B981',
+                decreasing_line_color='#EF4444',
                 name="Price"
             )
-        )
-        
+        ]
+    )
     fig.update_layout(
         title=f"{stock_symbol} - OHLC Chart",
         xaxis_rangeslider_visible=False,
-        template="plotly_white",
+        template="plotly_dark",
+        paper_bgcolor='rgba(26, 31, 46, 1)',
+        plot_bgcolor='rgba(26, 31, 46, 1)',
+        font=dict(color='#E5E7EB'),
         height=700
     )
 else:  # Line chart
