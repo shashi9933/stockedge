@@ -110,19 +110,25 @@ if fetch_data and stock_input:
                     'Volume': "{:,.0f}"
                 }))
                 
-                st.success(f"Successfully loaded data for {stock_input}")
+                st.success(f"✅ Successfully loaded data for {stock_input}")
             else:
-                st.error("No data returned for the selected stock and date range.")
+                st.error("❌ No data returned for the selected stock and date range.")
     except Exception as e:
-        st.error(f"Error fetching stock data: {str(e)}")
+        error_msg = str(e)
+        st.error(f"❌ Error fetching stock data: {error_msg}")
         
-        if "No data found" in str(e):
-            st.warning(
-                "Possible issues:\n"
-                "1. Check if the stock symbol is correct\n"
-                "2. For Indian stocks, use .NS (NSE) or .BO (BSE) suffix\n"
-                "3. The selected date range might not have trading data"
-            )
+        # Provide helpful suggestions based on error type
+        st.info(
+            "**Troubleshooting Tips:**\n"
+            "• **Correct the symbol**: Check if the stock symbol is spelled correctly\n"
+            "• **For Indian stocks**: Add suffix .NS (NSE) or .BO (BSE)\n"
+            "  - Example: RELIANCE.NS or TCS.NS\n"
+            "• **Try different dates**: The selected date range might not have data\n"
+            "• **Check symbol format**: Some symbols may be different (e.g., BRK.B instead of BRK)\n"
+            "• **Network issues**: Try again in a moment if you see connection errors"
+        )
+elif fetch_data and not stock_input:
+    st.warning("⚠️ Please enter a stock symbol first")
 elif st.session_state.stock_data is not None:
     # Display previously loaded data
     stock_input = st.session_state.selected_stock

@@ -32,6 +32,14 @@ def get_stock_data(symbol, start_date, end_date):
     Returns:
         pandas.DataFrame: Historical stock data
     """
+    import yfinance as yf
+    
+    # Validate inputs
+    if not symbol or not isinstance(symbol, str):
+        raise ValueError("Stock symbol must be a non-empty string")
+    
+    symbol = symbol.strip().upper()
+    
     # Add random delay to mitigate rate limiting
     time.sleep(random.uniform(0.5, 2))
     
@@ -41,31 +49,51 @@ def get_stock_data(symbol, start_date, end_date):
     # Try fetching the data with up to 3 attempts
     attempts = 0
     max_attempts = 3
+    last_error = None
     
     while attempts < max_attempts:
         try:
             # Create Ticker object
             ticker = yf.Ticker(symbol)
             
-            # Get historical data
+            # Get historical data (note: progress parameter removed for compatibility)
             data = ticker.history(
                 start=start_date, 
-                end=end_date + timedelta(days=1),  # Add one day to include end_date
-                auto_adjust=True
+                end=end_date + timedelta(days=1)  # Add one day to include end_date
             )
             
+            # Validate data
             if data.empty:
-                raise ValueError(f"No data found for {symbol} in the specified date range.")
+                last_error = f"No data found for {symbol}. Verify the symbol is correct."
+                raise ValueError(last_error)
+            
+            # Check if we have any valid OHLCV columns
+            required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+            if not all(col in data.columns for col in required_cols):
+                last_error = f"Invalid data structure for {symbol}"
+                raise ValueError(last_error)
             
             return data
             
         except Exception as e:
             attempts += 1
+            last_error = str(e)
+            
             if attempts < max_attempts:
-                # Wait longer between retries
-                time.sleep(random.uniform(2, 5))
+                # Wait longer between retries with exponential backoff
+                wait_time = random.uniform(2 + attempts, 5 + attempts)
+                time.sleep(wait_time)
             else:
-                raise Exception(f"Failed to fetch data after {max_attempts} attempts: {str(e)}")
+                # Return a user-friendly error message
+                error_msg = f"Failed to fetch data for {symbol} after {max_attempts} attempts."
+                if "No data" in last_error or "not found" in last_error.lower():
+                    error_msg += " Please verify the stock symbol is correct (e.g., AAPL for Apple, RELIANCE.NS for Reliance)."
+                elif "connection" in last_error.lower() or "network" in last_error.lower():
+                    error_msg += " Network error - please try again in a moment."
+                else:
+                    error_msg += f" Details: {last_error}"
+                
+                raise Exception(error_msg)
 
 @st.cache_data(ttl=86400)  # Cache for 24 hours
 def get_stock_info(symbol):
