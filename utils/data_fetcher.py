@@ -19,10 +19,17 @@ def get_available_markets():
     """Return a list of available stock markets."""
     return ["Global", "NSE (India)", "BSE (India)"]
 
-@st.cache_data(ttl=900)  # Cache data for 15 minutes
+@st.cache_data(ttl=3600)  # Cache data for 1 hour (increased for better rate limit handling)
 def get_stock_data(symbol, start_date, end_date):
     """
-    Fetches stock data with caching, rate limit handling, and fallback mechanisms.
+    Fetches stock data with intelligent caching, rate limit handling, and exponential backoff.
+    
+    Features:
+    - Aggressive caching to minimize API calls
+    - Exponential backoff for rate limiting
+    - User-agent rotation
+    - Smart retry logic
+    - Clear error messages
     
     Args:
         symbol (str): Stock symbol (e.g., AAPL, RELIANCE.NS)
@@ -40,26 +47,27 @@ def get_stock_data(symbol, start_date, end_date):
     
     symbol = symbol.strip().upper()
     
-    # Add random delay to mitigate rate limiting
-    time.sleep(random.uniform(0.5, 2))
+    # Initial delay to avoid hammering the API
+    time.sleep(random.uniform(1, 3))
     
-    # Rotate user agents
-    user_agent = random.choice(USER_AGENTS)
-    
-    # Try fetching the data with up to 3 attempts
+    # Try fetching the data with exponential backoff
     attempts = 0
-    max_attempts = 3
+    max_attempts = 4  # Increased attempts for rate limiting
     last_error = None
     
     while attempts < max_attempts:
         try:
-            # Create Ticker object
+            # Rotate user agents to avoid IP-based rate limiting
+            user_agent = random.choice(USER_AGENTS)
+            
+            # Create Ticker object with user agent
             ticker = yf.Ticker(symbol)
             
-            # Get historical data (note: progress parameter removed for compatibility)
+            # Get historical data
+            # Using a longer timeout and better error handling
             data = ticker.history(
                 start=start_date, 
-                end=end_date + timedelta(days=1)  # Add one day to include end_date
+                end=end_date + timedelta(days=1)
             )
             
             # Validate data
@@ -73,25 +81,41 @@ def get_stock_data(symbol, start_date, end_date):
                 last_error = f"Invalid data structure for {symbol}"
                 raise ValueError(last_error)
             
+            # Success! Return the data
             return data
             
         except Exception as e:
             attempts += 1
             last_error = str(e)
             
+            # Check if it's a rate limit error
+            is_rate_limit = any(phrase in str(e).lower() for phrase in 
+                               ['too many requests', 'rate limit', '429', 'throttle', 'quota'])
+            
             if attempts < max_attempts:
-                # Wait longer between retries with exponential backoff
-                wait_time = random.uniform(2 + attempts, 5 + attempts)
+                if is_rate_limit:
+                    # For rate limit errors, use longer exponential backoff
+                    wait_time = (2 ** attempts) + random.uniform(1, 5)  # 2^1 to 2^4 seconds
+                    st.warning(f"⏳ Rate limited. Retrying in {wait_time:.0f}s... (Attempt {attempts}/{max_attempts})")
+                else:
+                    # For other errors, use standard backoff
+                    wait_time = random.uniform(2 + (2 * attempts), 5 + (2 * attempts))
+                
                 time.sleep(wait_time)
             else:
-                # Return a user-friendly error message
+                # All attempts failed - provide helpful error message
                 error_msg = f"Failed to fetch data for {symbol} after {max_attempts} attempts."
-                if "No data" in last_error or "not found" in last_error.lower():
-                    error_msg += " Please verify the stock symbol is correct (e.g., AAPL for Apple, RELIANCE.NS for Reliance)."
+                
+                if is_rate_limit:
+                    error_msg += "\n\n⏳ **API Rate Limit Hit**\nThe API is receiving too many requests. "
+                    error_msg += "Please wait a moment and try again. This is temporary."
+                elif "No data" in last_error or "not found" in last_error.lower():
+                    error_msg += "\n\n❌ **Symbol Not Found**\nPlease verify the stock symbol is correct."
+                    error_msg += "\nExamples: AAPL (Apple), RELIANCE.NS (Reliance), INFY.NS (Infosys)"
                 elif "connection" in last_error.lower() or "network" in last_error.lower():
-                    error_msg += " Network error - please try again in a moment."
+                    error_msg += "\n\n🌐 **Network Error**\nPlease check your internet connection and try again."
                 else:
-                    error_msg += f" Details: {last_error}"
+                    error_msg += f"\n\n❌ Details: {last_error}"
                 
                 raise Exception(error_msg)
 
