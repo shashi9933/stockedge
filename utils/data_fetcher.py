@@ -23,15 +23,13 @@ def get_available_markets():
 @st.cache_data(ttl=3600)  # Cache data for 1 hour
 def get_stock_data(symbol, start_date, end_date):
     """
-    Fetches stock data with intelligent rate limiting, smart caching, and exponential backoff.
+    Fetches stock data with intelligent rate limiting and smart caching.
     
-    Features:
-    - Client-side request throttling
-    - Aggressive caching (1 hour TTL)
-    - Smart exponential backoff
-    - Per-symbol rate limit cooldown
-    - Clear progress messages
-    - Working example suggestions on failure
+    Strategy:
+    - Fail fast on rate limits (don't keep retrying)
+    - Use cached data when available
+    - Only retry for network/transient errors
+    - Suggest using cached data if rate limited
     
     Args:
         symbol (str): Stock symbol (e.g., AAPL, RELIANCE.NS)
@@ -53,33 +51,21 @@ def get_stock_data(symbol, start_date, end_date):
     # Check if we should wait before requesting
     wait_time = throttler.wait_if_needed(symbol)
     if wait_time:
-        st.info(f"⏳ Waiting {wait_time:.0f}s before retry (throttling to avoid rate limits)...")
+        st.info(f"⏳ Waiting {wait_time:.0f}s before retry (respecting API limits)...")
         time.sleep(wait_time)
     
-    # Try fetching the data with exponential backoff
+    # Try fetching with MINIMAL retries for rate limits
     attempts = 0
-    max_attempts = 5  # More attempts now
+    max_attempts = 2  # Only 2 attempts - fail fast on rate limits
     last_error = None
     
     while attempts < max_attempts:
-        # Check if we should continue retrying
-        if not throttler.can_retry(symbol):
-            raise Exception(
-                f"⏳ **Rate Limit Cooldown Active**\n\n"
-                f"Too many failed attempts for {symbol}.\n\n"
-                f"**Please wait at least 5 minutes before trying again.**\n\n"
-                f"In the meantime:\n"
-                f"• Try a different stock symbol\n"
-                f"• View previously fetched data\n"
-                f"• Refresh the page and try later"
-            )
-        
         try:
             attempts += 1
             
-            # Initial delay to avoid hammering
+            # Initial delay to avoid immediate hammering
             if attempts == 1:
-                time.sleep(random.uniform(1, 2))
+                time.sleep(random.uniform(0.5, 1.5))
             
             # Create Ticker object
             ticker = yf.Ticker(symbol)
@@ -92,16 +78,14 @@ def get_stock_data(symbol, start_date, end_date):
             
             # Validate data
             if data.empty:
-                last_error = f"No data found for {symbol}. Verify the symbol is correct."
-                raise ValueError(last_error)
+                raise ValueError(f"No data found for {symbol}. Verify the symbol is correct.")
             
             # Check if we have valid OHLCV columns
             required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
             if not all(col in data.columns for col in required_cols):
-                last_error = f"Invalid data structure for {symbol}"
-                raise ValueError(last_error)
+                raise ValueError(f"Invalid data structure for {symbol}")
             
-            # Success! Record it and return
+            # Success! Record and return
             throttler.record_request(symbol)
             return data
             
@@ -111,76 +95,54 @@ def get_stock_data(symbol, start_date, end_date):
                                ['too many requests', 'rate limit', '429', 'throttle', 'quota', 'http 429'])
             
             if is_rate_limit:
-                # Record the rate limit
+                # For rate limits: fail fast, don't retry
                 throttler.record_rate_limit(symbol)
+                
+                raise Exception(
+                    f"🔄 **API Rate Limit - Please Wait**\n\n"
+                    f"The stock API is temporarily rate-limited due to high traffic.\n\n"
+                    f"**What to do right now:**\n"
+                    f"1. **Try a different stock** - Try AAPL, MSFT, or GOOGL\n"
+                    f"2. **Check back in 2-3 minutes** - The limit resets quickly\n"
+                    f"3. **Use your cached data** - Refresh to see previously loaded stocks\n\n"
+                    f"**Why this happens:**\n"
+                    f"yfinance is a free API shared by thousands of users. "
+                    f"During busy times (like market open), everyone hits the same limits.\n\n"
+                    f"**After waiting:**\n"
+                    f"Come back and try {symbol} again - it should work!"
+                )
             
+            # For other errors, retry once more
             if attempts < max_attempts:
-                # Calculate wait time with exponential backoff
-                if is_rate_limit:
-                    # Much longer wait for rate limits
-                    wait_time = throttler.get_retry_wait_time(symbol, attempts)
-                    wait_time += random.uniform(2, 5)  # Add randomness
-                else:
-                    # Standard backoff for other errors
-                    wait_time = (2 ** attempts) + random.uniform(1, 3)
-                
-                wait_display = f"{wait_time:.0f}s"
-                
-                if is_rate_limit:
-                    st.warning(
-                        f"⏳ Rate limited. Waiting {wait_display}... "
-                        f"(Attempt {attempts}/{max_attempts})"
-                    )
-                else:
-                    st.info(
-                        f"⏳ Retrying in {wait_display}... "
-                        f"(Attempt {attempts}/{max_attempts})"
-                    )
-                
+                wait_time = 3 + random.uniform(1, 2)
+                st.info(f"⏳ Retrying in {wait_time:.0f}s... (Attempt {attempts}/{max_attempts})")
                 time.sleep(wait_time)
             else:
-                # All attempts failed
-                if is_rate_limit:
+                # Final attempt failed
+                if "No data" in last_error or "not found" in last_error.lower():
                     raise Exception(
-                        f"**⏳ API Rate Limit Hit**\n\n"
-                        f"The yfinance API is rate-limited (too many requests).\n\n"
-                        f"**What to do:**\n"
-                        f"1. **Wait 2-5 minutes** - The API limit resets\n"
-                        f"2. **Try a different stock** - Switch to another symbol\n"
-                        f"3. **Come back later** - Try after a few minutes\n\n"
-                        f"**Why it happens:**\n"
-                        f"yfinance is a free service with shared API limits. During peak hours "
-                        f"(market open), many users hit the same limits.\n\n"
-                        f"**Working examples to try:**\n"
-                        f"• AAPL (Apple)\n"
-                        f"• MSFT (Microsoft)\n"
-                        f"• RELIANCE.NS (Reliance)"
-                    )
-                elif "No data" in last_error or "not found" in last_error.lower():
-                    raise Exception(
-                        f"**❌ Symbol Not Found**\n\n"
-                        f"'{symbol}' not found or has no data.\n\n"
-                        f"**Try these working examples:**\n\n"
-                        f"**Global Stocks:**\n"
-                        f"• AAPL (Apple)\n"
-                        f"• MSFT (Microsoft)\n"
-                        f"• GOOGL (Google)\n"
-                        f"• TSLA (Tesla)\n\n"
+                        f"**❌ Stock Not Found**\n\n"
+                        f"'{symbol}' doesn't exist or has no data.\n\n"
+                        f"**Try these instead:**\n\n"
+                        f"**US Stocks:**\n"
+                        f"• AAPL - Apple\n"
+                        f"• MSFT - Microsoft\n"
+                        f"• GOOGL - Google\n"
+                        f"• TSLA - Tesla\n\n"
                         f"**Indian Stocks (NSE):**\n"
-                        f"• RELIANCE.NS (Reliance)\n"
-                        f"• TCS.NS (Tata Consultancy)\n"
-                        f"• INFY.NS (Infosys)\n"
-                        f"• HDFCBANK.NS (HDFC Bank)"
+                        f"• RELIANCE.NS - Reliance\n"
+                        f"• TCS.NS - Tata Consultancy\n"
+                        f"• INFY.NS - Infosys\n"
+                        f"• HDFCBANK.NS - HDFC Bank"
                     )
                 else:
                     raise Exception(
-                        f"**Failed to fetch data after {max_attempts} attempts**\n\n"
-                        f"Error: {last_error}\n\n"
-                        f"**Troubleshooting:**\n"
-                        f"• Check symbol spelling (AAPL, not APPLE)\n"
-                        f"• For Indian stocks, add .NS or .BO (RELIANCE.NS)\n"
-                        f"• Ensure the date range has trading data\n"
-                        f"• Try again in a few moments"
+                        f"**Network Error**\n\n"
+                        f"Could not fetch {symbol}.\n\n"
+                        f"**Try:**\n"
+                        f"• Check your internet connection\n"
+                        f"• Wait a moment and try again\n"
+                        f"• Try a different stock symbol"
                     )
 
 @st.cache_data(ttl=86400)  # Cache for 24 hours

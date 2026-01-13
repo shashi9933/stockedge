@@ -348,51 +348,64 @@ if fetch_data and stock_input:
         
         # Detect error type
         is_rate_limit = "rate limit" in error_msg.lower() or "too many requests" in error_msg.lower()
-        is_symbol_error = "symbol not found" in error_msg.lower() or "no data" in error_msg.lower()
+        is_symbol_error = "symbol not found" in error_msg.lower() or "not found" in error_msg.lower()
         is_cooldown = "cooldown" in error_msg.lower()
         
-        if is_cooldown:
-            st.error("❌ Too Many Attempts - Temporary Cooldown Active")
-            st.error(error_msg)
-        elif is_rate_limit:
-            st.error("❌ API Rate Limit Exceeded")
-            st.error(error_msg)
-        elif is_symbol_error:
-            st.error("❌ Stock Symbol Issue")
-            st.error(error_msg)
-        else:
-            st.error(f"❌ Error fetching stock data")
-            st.error(f"Details: {error_msg}")
+        # Display main error
+        st.error("❌ Could not fetch stock data")
+        st.markdown(error_msg)
         
-        # Show action items
-        if is_rate_limit or is_cooldown:
+        # Show cached data option if available
+        if st.session_state.stock_data is not None:
+            st.markdown("---")
+            st.info(
+                f"💾 **You have cached data for {st.session_state.selected_stock}**\n\n"
+                f"While waiting for the API to be available, you can:"
+                f"• View your previously loaded data below\n"
+                f"• Use the Chart Analysis page\n"
+                f"• Check Technical Indicators\n"
+                f"• View Predictions\n\n"
+                f"All pages will work with your cached data!"
+            )
+        
+        # Show relevant next steps
+        if is_rate_limit:
             st.markdown("""
             ---
-            ### ⏳ Next Steps
+            ### ⏳ Rate Limit Help
             
-            **Right now:**
-            - Try a different stock (AAPL, MSFT, GOOGL, RELIANCE.NS)
-            - Browse your previously loaded data
+            **Quick actions:**
+            - 🔄 Try a different stock (AAPL, MSFT, GOOGL, RELIANCE.NS)
+            - 📊 Use your cached data from earlier
+            - ⏰ Wait 2-3 minutes and come back
             
-            **In a few minutes:**
-            - Come back and try the same stock again
-            - The API limit will have reset by then
+            **Why this happens:**
+            yfinance is a free API used by thousands. During busy hours, everyone hits limits.
+            This is temporary and resets quickly.
             """)
         elif is_symbol_error:
             st.markdown("""
             ---
-            ### 💡 Quick Tips
-            - Use working examples above
-            - Indian stocks need .NS (NSE) or .BO (BSE) suffix
-            - Check spelling carefully
+            ### 🔍 Symbol Not Found
+            
+            **Working stocks to try:**
+            
+            **US Markets:**
+            - AAPL (Apple) • MSFT (Microsoft) • GOOGL (Google)
+            - TSLA (Tesla) • AMZN (Amazon) • META (Meta)
+            
+            **India NSE:**
+            - RELIANCE.NS • TCS.NS • INFY.NS • HDFCBANK.NS
             """)
         else:
             st.markdown("""
             ---
             ### 💡 Troubleshooting
-            - Refresh and try again
+            
+            **Try these steps:**
+            - Refresh the page and try again
+            - Use a different stock symbol
             - Check your internet connection
-            - Try a different stock symbol
             """)
         
 elif fetch_data and not stock_input:
