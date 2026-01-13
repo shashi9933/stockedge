@@ -345,46 +345,55 @@ if fetch_data and stock_input:
                 st.error("❌ No data returned for the selected stock and date range.")
     except Exception as e:
         error_msg = str(e)
-        st.error(f"❌ Error fetching stock data")
-        st.error(f"Details: {error_msg}")
         
-        # Provide context-aware suggestions
+        # Detect error type
         is_rate_limit = "rate limit" in error_msg.lower() or "too many requests" in error_msg.lower()
-        is_symbol_error = "no data" in error_msg.lower() or "symbol not found" in error_msg.lower()
+        is_symbol_error = "symbol not found" in error_msg.lower() or "no data" in error_msg.lower()
+        is_cooldown = "cooldown" in error_msg.lower()
         
-        if is_rate_limit:
-            st.warning(
-                "**⏳ API Rate Limit Reached**\n\n"
-                "The stock data API is receiving too many requests from all users. This is temporary.\n\n"
-                "**What to do:**\n"
-                "• Wait 1-2 minutes and try again\n"
-                "• Try a different stock symbol first\n"
-                "• The app caches data for 1 hour to reduce requests\n"
-                "• Peak hours (market open) see more rate limiting"
-            )
+        if is_cooldown:
+            st.error("❌ Too Many Attempts - Temporary Cooldown Active")
+            st.error(error_msg)
+        elif is_rate_limit:
+            st.error("❌ API Rate Limit Exceeded")
+            st.error(error_msg)
         elif is_symbol_error:
-            st.info(
-                "**💡 Stock Symbol Not Found**\n\n"
-                "The symbol you entered doesn't exist or has no data.\n\n"
-                "**Try these working examples:**\n"
-                "**Global Stocks:**\n"
-                "• AAPL (Apple)\n"
-                "• MSFT (Microsoft)\n"
-                "• GOOGL (Google)\n\n"
-                "**Indian Stocks (NSE):**\n"
-                "• RELIANCE.NS (Reliance Industries)\n"
-                "• TCS.NS (Tata Consultancy Services)\n"
-                "• INFY.NS (Infosys)"
-            )
+            st.error("❌ Stock Symbol Issue")
+            st.error(error_msg)
         else:
-            st.info(
-                "**💡 Troubleshooting Tips:**\n\n"
-                "• **Check the symbol**: Verify spelling (AAPL, MSFT, GOOGL, etc.)\n"
-                "• **Indian stocks**: Add .NS for NSE (e.g., RELIANCE.NS) or .BO for BSE\n"
-                "• **Try examples**: AAPL (Apple), RELIANCE.NS (Reliance), INFY.NS (Infosys)\n"
-                "• **Date range**: Ensure the stock had trading data in your selected dates\n"
-                "• **Try again**: Wait a moment and retry - API might be temporarily busy"
-            )
+            st.error(f"❌ Error fetching stock data")
+            st.error(f"Details: {error_msg}")
+        
+        # Show action items
+        if is_rate_limit or is_cooldown:
+            st.markdown("""
+            ---
+            ### ⏳ Next Steps
+            
+            **Right now:**
+            - Try a different stock (AAPL, MSFT, GOOGL, RELIANCE.NS)
+            - Browse your previously loaded data
+            
+            **In a few minutes:**
+            - Come back and try the same stock again
+            - The API limit will have reset by then
+            """)
+        elif is_symbol_error:
+            st.markdown("""
+            ---
+            ### 💡 Quick Tips
+            - Use working examples above
+            - Indian stocks need .NS (NSE) or .BO (BSE) suffix
+            - Check spelling carefully
+            """)
+        else:
+            st.markdown("""
+            ---
+            ### 💡 Troubleshooting
+            - Refresh and try again
+            - Check your internet connection
+            - Try a different stock symbol
+            """)
         
 elif fetch_data and not stock_input:
     st.warning("⚠️ Please enter a stock symbol in the sidebar first")
