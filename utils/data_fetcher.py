@@ -3,9 +3,21 @@ import pandas as pd
 import numpy as np
 import random
 import time
+import requests
+import os
 from datetime import datetime, timedelta
 import streamlit as st
 from utils.request_throttler import get_throttler
+
+# Load API keys from environment variables or config
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except:
+    pass
+
+FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')
+ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY', '')
 
 # User agents for API request rotation
 USER_AGENTS = [
@@ -20,16 +32,132 @@ def get_available_markets():
     """Return a list of available stock markets."""
     return ["Global", "NSE (India)", "BSE (India)"]
 
+
+def _get_finnhub_data(symbol, start_date, end_date):
+    """
+    Fetch data from Finnhub API (Primary - best rate limits: ~60/min)
+    """
+    if not FINNHUB_API_KEY:
+        raise Exception("Finnhub API key not configured")
+    
+    try:
+        # Finnhub doesn't provide historical data in free tier, so we use it for validation
+        # and recent quote data, then fall back to other APIs for historical data
+        url = f"https://finnhub.io/api/v1/quote"
+        params = {"symbol": symbol, "token": FINNHUB_API_KEY}
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'c' not in data or data['c'] is None:
+            raise Exception(f"No data from Finnhub for {symbol}")
+        
+        # Finnhub provides current quote but not historical data in free tier
+        # So we validate the symbol works, then use yfinance for actual historical data
+        return None  # Will fall through to next API
+        
+    except requests.exceptions.Timeout:
+        raise Exception("Finnhub request timeout")
+    except Exception as e:
+        if "429" in str(e) or "rate limit" in str(e).lower():
+            raise Exception(f"Finnhub rate limit: {str(e)}")
+        raise Exception(f"Finnhub error: {str(e)}")
+
+
+def _get_alpha_vantage_data(symbol, start_date, end_date):
+    """
+    Fetch data from Alpha Vantage API (Secondary - 5 calls/min, 500/day)
+    """
+    if not ALPHA_VANTAGE_API_KEY:
+        raise Exception("Alpha Vantage API key not configured")
+    
+    try:
+        url = "https://www.alphavantage.co/query"
+        params = {
+            "function": "TIME_SERIES_DAILY",
+            "symbol": symbol,
+            "apikey": ALPHA_VANTAGE_API_KEY,
+            "outputsize": "full"
+        }
+        
+        response = requests.get(url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        
+        if "Time Series (Daily)" not in data:
+            error_msg = data.get("Note", data.get("Error Message", "No data found"))
+            raise Exception(f"Alpha Vantage: {error_msg}")
+        
+        # Convert to DataFrame
+        ts_data = data["Time Series (Daily)"]
+        df_data = []
+        
+        for date_str, values in ts_data.items():
+            date = pd.to_datetime(date_str)
+            if date < start_date or date > end_date:
+                continue
+                
+            df_data.append({
+                'Date': date,
+                'Open': float(values['1. open']),
+                'High': float(values['2. high']),
+                'Low': float(values['3. low']),
+                'Close': float(values['4. close']),
+                'Volume': float(values['5. volume']),
+                'Adj Close': float(values['4. close'])
+            })
+        
+        if not df_data:
+            raise Exception(f"No data for {symbol} in date range")
+        
+        df = pd.DataFrame(df_data)
+        df = df.sort_values('Date').set_index('Date')
+        return df
+        
+    except requests.exceptions.Timeout:
+        raise Exception("Alpha Vantage request timeout")
+    except Exception as e:
+        if "429" in str(e) or "rate limit" in str(e).lower() or "call frequency" in str(e).lower():
+            raise Exception(f"Alpha Vantage rate limit: {str(e)}")
+        raise Exception(f"Alpha Vantage error: {str(e)}")
+
+
+def _get_yfinance_data(symbol, start_date, end_date):
+    """
+    Fetch data from yfinance (Fallback - free but has rate limits)
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        data = ticker.history(start=start_date, end=end_date + timedelta(days=1))
+        
+        if data.empty:
+            raise Exception(f"No data found for {symbol}")
+        
+        # Ensure required columns exist
+        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        if not all(col in data.columns for col in required_cols):
+            raise Exception(f"Invalid data structure for {symbol}")
+        
+        return data
+        
+    except Exception as e:
+        error_str = str(e).lower()
+        if "rate limit" in error_str or "too many" in error_str or "429" in error_str:
+            raise Exception(f"yfinance rate limit: {str(e)}")
+        raise Exception(f"yfinance error: {str(e)}")
+
+
 @st.cache_data(ttl=3600)  # Cache data for 1 hour
 def get_stock_data(symbol, start_date, end_date):
     """
-    Fetches stock data with intelligent rate limiting and smart caching.
+    Fetches stock data with intelligent multi-API fallback strategy.
     
-    Strategy:
-    - Fail fast on rate limits (don't keep retrying)
-    - Use cached data when available
-    - Only retry for network/transient errors
-    - Suggest using cached data if rate limited
+    Primary APIs (in order of attempt):
+    1. Alpha Vantage (5 calls/min, 500/day) - Good data quality
+    2. yfinance (fallback) - Free but has rate limits
+    
+    Finnhub can validate symbols but doesn't provide historical data in free tier.
     
     Args:
         symbol (str): Stock symbol (e.g., AAPL, RELIANCE.NS)
@@ -38,6 +166,9 @@ def get_stock_data(symbol, start_date, end_date):
         
     Returns:
         pandas.DataFrame: Historical stock data
+        
+    Raises:
+        Exception: If all APIs fail
     """
     import yfinance as yf
     
@@ -54,96 +185,88 @@ def get_stock_data(symbol, start_date, end_date):
         st.info(f"⏳ Waiting {wait_time:.0f}s before retry (respecting API limits)...")
         time.sleep(wait_time)
     
-    # Try fetching with MINIMAL retries for rate limits
-    attempts = 0
-    max_attempts = 2  # Only 2 attempts - fail fast on rate limits
-    last_error = None
+    # Try multiple APIs in order
+    api_errors = {}
     
-    while attempts < max_attempts:
+    # API 1: Try Alpha Vantage first (if configured)
+    if ALPHA_VANTAGE_API_KEY:
         try:
-            attempts += 1
-            
-            # Initial delay to avoid immediate hammering
-            if attempts == 1:
-                time.sleep(random.uniform(0.5, 1.5))
-            
-            # Create Ticker object
-            ticker = yf.Ticker(symbol)
-            
-            # Get historical data
-            data = ticker.history(
-                start=start_date, 
-                end=end_date + timedelta(days=1)
-            )
-            
-            # Validate data
-            if data.empty:
-                raise ValueError(f"No data found for {symbol}. Verify the symbol is correct.")
-            
-            # Check if we have valid OHLCV columns
-            required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-            if not all(col in data.columns for col in required_cols):
-                raise ValueError(f"Invalid data structure for {symbol}")
-            
-            # Success! Record and return
+            st.info("📡 Fetching from Alpha Vantage...")
+            data = _get_alpha_vantage_data(symbol, start_date, end_date)
             throttler.record_request(symbol)
+            st.success("✅ Data fetched from Alpha Vantage")
             return data
-            
         except Exception as e:
-            last_error = str(e)
-            is_rate_limit = any(phrase in last_error.lower() for phrase in 
-                               ['too many requests', 'rate limit', '429', 'throttle', 'quota', 'http 429'])
-            
-            if is_rate_limit:
-                # For rate limits: fail fast, don't retry
+            api_errors['Alpha Vantage'] = str(e)
+            # Check if rate limited
+            if "rate limit" in str(e).lower():
                 throttler.record_rate_limit(symbol)
-                
-                raise Exception(
-                    f"🔄 **API Rate Limit - Please Wait**\n\n"
-                    f"The stock API is temporarily rate-limited due to high traffic.\n\n"
-                    f"**What to do right now:**\n"
-                    f"1. **Try a different stock** - Try AAPL, MSFT, or GOOGL\n"
-                    f"2. **Check back in 2-3 minutes** - The limit resets quickly\n"
-                    f"3. **Use your cached data** - Refresh to see previously loaded stocks\n\n"
-                    f"**Why this happens:**\n"
-                    f"yfinance is a free API shared by thousands of users. "
-                    f"During busy times (like market open), everyone hits the same limits.\n\n"
-                    f"**After waiting:**\n"
-                    f"Come back and try {symbol} again - it should work!"
-                )
-            
-            # For other errors, retry once more
-            if attempts < max_attempts:
-                wait_time = 3 + random.uniform(1, 2)
-                st.info(f"⏳ Retrying in {wait_time:.0f}s... (Attempt {attempts}/{max_attempts})")
-                time.sleep(wait_time)
-            else:
-                # Final attempt failed
-                if "No data" in last_error or "not found" in last_error.lower():
-                    raise Exception(
-                        f"**❌ Stock Not Found**\n\n"
-                        f"'{symbol}' doesn't exist or has no data.\n\n"
-                        f"**Try these instead:**\n\n"
-                        f"**US Stocks:**\n"
-                        f"• AAPL - Apple\n"
-                        f"• MSFT - Microsoft\n"
-                        f"• GOOGL - Google\n"
-                        f"• TSLA - Tesla\n\n"
-                        f"**Indian Stocks (NSE):**\n"
-                        f"• RELIANCE.NS - Reliance\n"
-                        f"• TCS.NS - Tata Consultancy\n"
-                        f"• INFY.NS - Infosys\n"
-                        f"• HDFCBANK.NS - HDFC Bank"
-                    )
-                else:
-                    raise Exception(
-                        f"**Network Error**\n\n"
-                        f"Could not fetch {symbol}.\n\n"
-                        f"**Try:**\n"
-                        f"• Check your internet connection\n"
-                        f"• Wait a moment and try again\n"
-                        f"• Try a different stock symbol"
-                    )
+    
+    # API 2: Try yfinance (always available)
+    try:
+        st.info("📡 Fetching from yfinance...")
+        data = _get_yfinance_data(symbol, start_date, end_date)
+        throttler.record_request(symbol)
+        st.success("✅ Data fetched from yfinance")
+        return data
+    except Exception as e:
+        api_errors['yfinance'] = str(e)
+        error_str = str(e).lower()
+        if "rate limit" in error_str or "too many" in error_str:
+            throttler.record_rate_limit(symbol)
+    
+    # All APIs failed - provide helpful error message
+    is_rate_limit = any(
+        "rate limit" in api_errors[api].lower() 
+        for api in api_errors
+    )
+    
+    is_symbol_error = any(
+        "not found" in api_errors[api].lower() or "no data" in api_errors[api].lower()
+        for api in api_errors
+    )
+    
+    if is_rate_limit:
+        raise Exception(
+            f"🔄 **Multiple APIs Rate Limited**\n\n"
+            f"All stock APIs are temporarily rate-limited due to high traffic.\n\n"
+            f"**What to do:**\n"
+            f"1. **Try a different stock** - Try AAPL, MSFT, or GOOGL\n"
+            f"2. **Check back in 2-3 minutes** - All limits reset quickly\n"
+            f"3. **Use your cached data** - Refresh to see previously loaded stocks\n\n"
+            f"**Why this happens:**\n"
+            f"Multiple free APIs are shared by thousands of users. "
+            f"During busy times (like market open), everyone hits limits simultaneously.\n\n"
+            f"**After waiting:**\n"
+            f"Come back and try {symbol} again - it should work!"
+        )
+    elif is_symbol_error:
+        raise Exception(
+            f"**❌ Stock Not Found**\n\n"
+            f"'{symbol}' doesn't exist or has no data.\n\n"
+            f"**Try these instead:**\n\n"
+            f"**US Stocks:**\n"
+            f"• AAPL - Apple\n"
+            f"• MSFT - Microsoft\n"
+            f"• GOOGL - Google\n"
+            f"• TSLA - Tesla\n\n"
+            f"**Indian Stocks (NSE):**\n"
+            f"• RELIANCE.NS - Reliance\n"
+            f"• TCS.NS - Tata Consultancy\n"
+            f"• INFY.NS - Infosys\n"
+            f"• HDFCBANK.NS - HDFC Bank"
+        )
+    else:
+        # Network or other error
+        raise Exception(
+            f"**Unable to fetch {symbol}**\n\n"
+            f"**Errors from all APIs:**\n"
+            + "\n".join([f"• {api}: {api_errors[api]}" for api in api_errors]) +
+            f"\n\n**Try:**\n"
+            f"• Check your internet connection\n"
+            f"• Wait a moment and try again\n"
+            f"• Try a different stock symbol"
+        )
 
 @st.cache_data(ttl=86400)  # Cache for 24 hours
 def get_stock_info(symbol):
