@@ -6,13 +6,17 @@ import plotly.graph_objects as go
 from utils.data_fetcher import (get_stock_data, get_stock_info, 
                                  get_income_statement, get_balance_sheet, 
                                  get_cash_flow, get_company_overview, get_earnings)
+from utils.ui_helpers import page_header, premium_css
 
 st.set_page_config(
     page_title="Financial Metrics - StockSense",
-    page_icon="📊",
+    page_icon="💰",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+premium_css()
+page_header("Financial Metrics", "Detailed financial analysis & statements", "💰")
 
 # Custom CSS for styling
 st.markdown("""

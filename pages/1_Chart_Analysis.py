@@ -10,30 +10,7 @@ from utils.chart_helpers import (
     add_annotations
 )
 from utils.technical_indicators import detect_candlestick_patterns
-
-# Custom CSS
-custom_css = """
-<style>
-    :root {
-        --primary: #3B82F6;
-        --success: #10B981;
-        --danger: #EF4444;
-        --dark-bg: #0F1419;
-        --card-bg: #1A1F2E;
-        --border-color: #2D3748;
-        --text-primary: #E5E7EB;
-        --text-secondary: #9CA3AF;
-    }
-    
-    [data-testid="metric-container"] {
-        background-color: var(--card-bg);
-        padding: 20px;
-        border-radius: 12px;
-        border: 1px solid var(--border-color);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-</style>
-"""
+from utils.ui_helpers import page_header, premium_css
 
 st.set_page_config(
     page_title="Chart Analysis - StockSense",
@@ -41,14 +18,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.markdown(custom_css, unsafe_allow_html=True)
-
-st.markdown("""
-<div style="text-align: center; padding: 20px 0; border-bottom: 1px solid #2D3748;">
-    <h1 style="margin: 0; color: #E5E7EB;">📊 Chart Analysis</h1>
-    <p style="color: #9CA3AF; margin: 5px 0;">Advanced charting & technical patterns</p>
-</div>
-""", unsafe_allow_html=True)
+premium_css()
+page_header("Chart Analysis", "Advanced charting & technical patterns", "📊")
 
 # Check if stock data exists in session state
 if 'stock_data' not in st.session_state or st.session_state.stock_data is None:

@@ -10,13 +10,16 @@ from utils.price_alerts import (
     check_price_alerts,
     send_alert_notification
 )
+from utils.ui_helpers import page_header, premium_css
 
-# Set page configuration
 st.set_page_config(
-    page_title="Price Alerts - Stock Market Analysis Platform",
-    page_icon="📈",
+    page_title="Price Alerts - StockSense",
+    page_icon="🔔",
     layout="wide"
 )
+
+premium_css()
+page_header("Price Alerts", "Set alerts for price movements", "🔔")
 
 st.title("Price Alerts")
 st.markdown("Set up custom price alerts for your selected stocks.")

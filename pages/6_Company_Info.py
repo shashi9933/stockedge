@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.data_fetcher import get_stock_info
+from utils.ui_helpers import page_header, premium_css
 import pandas as pd
 
 st.set_page_config(
@@ -8,8 +9,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.markdown("""
-<style>
+premium_css()
+page_header("Company Information", "Detailed profiles & leadership", "🏢")
     .company-section {
         background: linear-gradient(135deg, #1A1F2E 0%, #0F1419 100%);
         padding: 25px;

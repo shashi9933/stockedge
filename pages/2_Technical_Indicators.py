@@ -12,16 +12,16 @@ from utils.technical_indicators import (
     calculate_support_resistance,
     plot_with_indicators
 )
+from utils.ui_helpers import page_header, premium_css
 
-# Set page configuration
 st.set_page_config(
-    page_title="Technical Indicators - Stock Market Analysis Platform",
+    page_title="Technical Indicators - StockSense",
     page_icon="📈",
     layout="wide"
 )
 
-st.title("Technical Indicators")
-st.markdown("Analyze stock data with various technical indicators.")
+premium_css()
+page_header("Technical Indicators", "Advanced analysis with 50+ indicators", "📈")
 
 # Check if stock data exists in session state
 if 'stock_data' not in st.session_state or st.session_state.stock_data is None:

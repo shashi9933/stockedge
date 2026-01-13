@@ -20,13 +20,17 @@ from utils.market_regime import (
     plot_market_regime,
     get_preferred_models_for_regime
 )
+from utils.ui_helpers import page_header, premium_css
 
 # Set page configuration
 st.set_page_config(
-    page_title="Prediction Models - Stock Market Analysis Platform",
-    page_icon="📈",
+    page_title="Prediction Models - StockSense",
+    page_icon="🤖",
     layout="wide"
 )
+
+premium_css()
+page_header("Prediction Models", "AI-powered price forecasting", "🤖")
 
 st.title("Prediction Models")
 st.markdown("Stock price prediction using multiple models with market regime detection and ensemble approach.")

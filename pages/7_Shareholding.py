@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+from utils.ui_helpers import page_header, premium_css
 
 st.set_page_config(
     page_title="Shareholding Pattern - StockSense",
@@ -11,23 +12,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for styling
-st.markdown("""
-<style>
-    .shareholding-card {
-        background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
-        padding: 20px;
-        border-radius: 12px;
-        color: white;
-        text-align: center;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        margin: 10px 0;
-    }
-    
-    .shareholding-value {
-        font-size: 28px;
-        font-weight: bold;
-        margin: 10px 0;
+premium_css()
+page_header("Shareholding Pattern", "Corporate shareholding analysis", "👥")
     }
     
     .shareholding-label {

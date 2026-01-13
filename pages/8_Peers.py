@@ -3,21 +3,17 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from utils.ui_helpers import page_header, premium_css
 
 st.set_page_config(
     page_title="Peer Comparison - StockSense",
-    page_icon="📊",
+    page_icon="🔗",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for styling
-st.markdown("""
-<style>
-    .peer-card {
-        background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
-        padding: 20px;
-        border-radius: 12px;
+premium_css()
+page_header("Peer Comparison", "Benchmark against industry competitors", "🔗")
         color: white;
         text-align: center;
         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
