@@ -323,3 +323,200 @@ def validate_stock_symbol(symbol):
         return False
     except:
         return False
+
+
+def get_income_statement(symbol):
+    """
+    Fetch income statement data from Alpha Vantage.
+    
+    Args:
+        symbol (str): Stock symbol
+        
+    Returns:
+        dict: Annual and quarterly income statements
+    """
+    if not ALPHA_VANTAGE_API_KEY:
+        st.warning("Alpha Vantage API key not configured. Income statements unavailable.")
+        return None
+    
+    try:
+        url = "https://www.alphavantage.co/query"
+        params = {
+            "function": "INCOME_STATEMENT",
+            "symbol": symbol,
+            "apikey": ALPHA_VANTAGE_API_KEY
+        }
+        
+        time.sleep(1.2)  # Rate limiting
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'annualReports' in data:
+            return {
+                'annual': data.get('annualReports', []),
+                'quarterly': data.get('quarterlyReports', [])
+            }
+        else:
+            return None
+            
+    except Exception as e:
+        st.warning(f"Could not fetch income statement: {str(e)}")
+        return None
+
+
+def get_balance_sheet(symbol):
+    """
+    Fetch balance sheet data from Alpha Vantage.
+    
+    Args:
+        symbol (str): Stock symbol
+        
+    Returns:
+        dict: Annual and quarterly balance sheets
+    """
+    if not ALPHA_VANTAGE_API_KEY:
+        st.warning("Alpha Vantage API key not configured. Balance sheets unavailable.")
+        return None
+    
+    try:
+        url = "https://www.alphavantage.co/query"
+        params = {
+            "function": "BALANCE_SHEET",
+            "symbol": symbol,
+            "apikey": ALPHA_VANTAGE_API_KEY
+        }
+        
+        time.sleep(1.2)  # Rate limiting
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'annualReports' in data:
+            return {
+                'annual': data.get('annualReports', []),
+                'quarterly': data.get('quarterlyReports', [])
+            }
+        else:
+            return None
+            
+    except Exception as e:
+        st.warning(f"Could not fetch balance sheet: {str(e)}")
+        return None
+
+
+def get_cash_flow(symbol):
+    """
+    Fetch cash flow statement data from Alpha Vantage.
+    
+    Args:
+        symbol (str): Stock symbol
+        
+    Returns:
+        dict: Annual and quarterly cash flow statements
+    """
+    if not ALPHA_VANTAGE_API_KEY:
+        st.warning("Alpha Vantage API key not configured. Cash flow unavailable.")
+        return None
+    
+    try:
+        url = "https://www.alphavantage.co/query"
+        params = {
+            "function": "CASH_FLOW",
+            "symbol": symbol,
+            "apikey": ALPHA_VANTAGE_API_KEY
+        }
+        
+        time.sleep(1.2)  # Rate limiting
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'annualReports' in data:
+            return {
+                'annual': data.get('annualReports', []),
+                'quarterly': data.get('quarterlyReports', [])
+            }
+        else:
+            return None
+            
+    except Exception as e:
+        st.warning(f"Could not fetch cash flow: {str(e)}")
+        return None
+
+
+def get_company_overview(symbol):
+    """
+    Fetch comprehensive company overview from Alpha Vantage.
+    
+    Args:
+        symbol (str): Stock symbol
+        
+    Returns:
+        dict: Company information, financial ratios, and key metrics
+    """
+    if not ALPHA_VANTAGE_API_KEY:
+        st.warning("Alpha Vantage API key not configured. Company overview unavailable.")
+        return None
+    
+    try:
+        url = "https://www.alphavantage.co/query"
+        params = {
+            "function": "OVERVIEW",
+            "symbol": symbol,
+            "apikey": ALPHA_VANTAGE_API_KEY
+        }
+        
+        time.sleep(1.2)  # Rate limiting
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'Name' in data:  # Valid response
+            return data
+        else:
+            return None
+            
+    except Exception as e:
+        st.warning(f"Could not fetch company overview: {str(e)}")
+        return None
+
+
+def get_earnings(symbol):
+    """
+    Fetch earnings history from Alpha Vantage.
+    
+    Args:
+        symbol (str): Stock symbol
+        
+    Returns:
+        dict: Annual and quarterly earnings data
+    """
+    if not ALPHA_VANTAGE_API_KEY:
+        st.warning("Alpha Vantage API key not configured. Earnings unavailable.")
+        return None
+    
+    try:
+        url = "https://www.alphavantage.co/query"
+        params = {
+            "function": "EARNINGS",
+            "symbol": symbol,
+            "apikey": ALPHA_VANTAGE_API_KEY
+        }
+        
+        time.sleep(1.2)  # Rate limiting
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'annualEarnings' in data:
+            return {
+                'annual': data.get('annualEarnings', []),
+                'quarterly': data.get('quarterlyEarnings', [])
+            }
+        else:
+            return None
+            
+    except Exception as e:
+        st.warning(f"Could not fetch earnings: {str(e)}")
+        return None

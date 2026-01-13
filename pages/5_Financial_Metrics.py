@@ -3,7 +3,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
-from utils.data_fetcher import get_stock_data, get_stock_info
+from utils.data_fetcher import (get_stock_data, get_stock_info, 
+                                 get_income_statement, get_balance_sheet, 
+                                 get_cash_flow, get_company_overview, get_earnings)
 
 st.set_page_config(
     page_title="Financial Metrics - StockSense",
@@ -192,50 +194,161 @@ if stock_symbol:
                 ["Income Statement", "Balance Sheet", "Cash Flow"]
             )
             
+            period = st.radio("Period", ["Annual", "Quarterly"], key="period_select")
+            
             if statement_type == "Income Statement":
-                st.info("📌 Income Statement - P&L data would come from financial APIs")
-                st.markdown("""
-                **Sample Data Structure:**
-                - Revenue / Sales
-                - Cost of Goods Sold
-                - Gross Profit
-                - Operating Expenses
-                - Operating Income (EBIT)
-                - Interest Expense
-                - Tax Expense
-                - Net Income
+                st.subheader("💰 Income Statement (P&L)")
                 
-                *Coming soon: Integration with financial data APIs*
-                """)
+                income_data = get_income_statement(stock_symbol)
+                
+                if income_data:
+                    statements = income_data['annual'] if period == "Annual" else income_data['quarterly']
+                    
+                    if statements:
+                        # Create dataframe from statements
+                        display_items = ['fiscalDateEnding', 'totalRevenue', 'costOfRevenue', 
+                                       'grossProfit', 'operatingIncome', 'netIncome']
+                        
+                        df_display = []
+                        for stmt in statements[:4]:  # Show last 4 periods
+                            row = {
+                                'Period': stmt.get('fiscalDateEnding', 'N/A'),
+                                'Revenue': int(stmt.get('totalRevenue', 0)) or 0,
+                                'COGS': int(stmt.get('costOfRevenue', 0)) or 0,
+                                'Gross Profit': int(stmt.get('grossProfit', 0)) or 0,
+                                'Operating Income': int(stmt.get('operatingIncome', 0)) or 0,
+                                'Net Income': int(stmt.get('netIncome', 0)) or 0
+                            }
+                            df_display.append(row)
+                        
+                        df = pd.DataFrame(df_display)
+                        
+                        # Display as formatted table
+                        st.dataframe(df.style.format({'Revenue': '${:,.0f}', 'COGS': '${:,.0f}', 
+                                                       'Gross Profit': '${:,.0f}', 'Operating Income': '${:,.0f}',
+                                                       'Net Income': '${:,.0f}'}), use_container_width=True)
+                        
+                        # Calculate margins
+                        if df_display:
+                            latest = df_display[0]
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                if latest['Revenue'] > 0:
+                                    gm = (latest['Gross Profit'] / latest['Revenue']) * 100
+                                    st.metric("Gross Margin", f"{gm:.1f}%")
+                            with col2:
+                                if latest['Revenue'] > 0:
+                                    om = (latest['Operating Income'] / latest['Revenue']) * 100
+                                    st.metric("Operating Margin", f"{om:.1f}%")
+                            with col3:
+                                if latest['Revenue'] > 0:
+                                    nm = (latest['Net Income'] / latest['Revenue']) * 100
+                                    st.metric("Net Margin", f"{nm:.1f}%")
+                    else:
+                        st.warning("No income statement data available for this period.")
+                else:
+                    st.warning("⚠️ Enable Alpha Vantage API to view income statements. Add your API key to `.env` file.")
             
             elif statement_type == "Balance Sheet":
-                st.info("📌 Balance Sheet - Asset, Liability, and Equity data")
-                st.markdown("""
-                **Assets:**
-                - Current Assets
-                - Fixed Assets
-                - Investments
-                - Other Assets
+                st.subheader("📊 Balance Sheet")
                 
-                **Liabilities & Equity:**
-                - Current Liabilities
-                - Long-term Debt
-                - Share Capital
-                - Reserves
+                balance_data = get_balance_sheet(stock_symbol)
                 
-                *Coming soon: Integration with financial data APIs*
-                """)
+                if balance_data:
+                    statements = balance_data['annual'] if period == "Annual" else balance_data['quarterly']
+                    
+                    if statements:
+                        df_display = []
+                        for stmt in statements[:4]:  # Show last 4 periods
+                            row = {
+                                'Period': stmt.get('reportedDate', 'N/A'),
+                                'Total Assets': int(stmt.get('totalAssets', 0)) or 0,
+                                'Current Assets': int(stmt.get('totalCurrentAssets', 0)) or 0,
+                                'Current Liabilities': int(stmt.get('totalCurrentLiabilities', 0)) or 0,
+                                'Total Liabilities': int(stmt.get('totalLiabilities', 0)) or 0,
+                                'Shareholders Equity': int(stmt.get('totalShareholderEquity', 0)) or 0
+                            }
+                            df_display.append(row)
+                        
+                        df = pd.DataFrame(df_display)
+                        
+                        st.dataframe(df.style.format({'Total Assets': '${:,.0f}', 'Current Assets': '${:,.0f}',
+                                                       'Current Liabilities': '${:,.0f}', 'Total Liabilities': '${:,.0f}',
+                                                       'Shareholders Equity': '${:,.0f}'}), use_container_width=True)
+                        
+                        # Key ratios
+                        if df_display:
+                            latest = df_display[0]
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                if latest['Current Liabilities'] > 0:
+                                    cr = latest['Current Assets'] / latest['Current Liabilities']
+                                    st.metric("Current Ratio", f"{cr:.2f}")
+                            with col2:
+                                if latest['Total Assets'] > 0:
+                                    adr = (latest['Total Liabilities'] / latest['Total Assets']) * 100
+                                    st.metric("Debt Ratio", f"{adr:.1f}%")
+                            with col3:
+                                if latest['Shareholders Equity'] > 0:
+                                    roe_calc = (latest.get('Net Income', 0) / latest['Shareholders Equity']) * 100 if 'Net Income' in latest else 0
+                                    st.metric("Equity Ratio", f"{(latest['Shareholders Equity']/latest['Total Assets']*100):.1f}%")
+                    else:
+                        st.warning("No balance sheet data available for this period.")
+                else:
+                    st.warning("⚠️ Enable Alpha Vantage API to view balance sheets. Add your API key to `.env` file.")
             
             else:  # Cash Flow
-                st.info("📌 Cash Flow Statement")
-                st.markdown("""
-                - Operating Cash Flow
-                - Investing Cash Flow
-                - Financing Cash Flow
-                - Net Change in Cash
+                st.subheader("💵 Cash Flow Statement")
                 
-                *Coming soon: Integration with financial data APIs*
-                """)
+                cf_data = get_cash_flow(stock_symbol)
+                
+                if cf_data:
+                    statements = cf_data['annual'] if period == "Annual" else cf_data['quarterly']
+                    
+                    if statements:
+                        df_display = []
+                        for stmt in statements[:4]:  # Show last 4 periods
+                            row = {
+                                'Period': stmt.get('fiscalDateEnding', 'N/A'),
+                                'Operating CF': int(stmt.get('operatingCashflow', 0)) or 0,
+                                'Investing CF': int(stmt.get('capitalExpenditures', 0)) or 0,
+                                'Financing CF': int(stmt.get('dividendsPaid', 0)) or 0,
+                                'Free Cash Flow': (int(stmt.get('operatingCashflow', 0)) or 0) - (int(stmt.get('capitalExpenditures', 0)) or 0)
+                            }
+                            df_display.append(row)
+                        
+                        df = pd.DataFrame(df_display)
+                        
+                        st.dataframe(df.style.format({'Operating CF': '${:,.0f}', 'Investing CF': '${:,.0f}',
+                                                       'Financing CF': '${:,.0f}', 'Free Cash Flow': '${:,.0f}'}), use_container_width=True)
+                        
+                        # FCF visualization
+                        if df_display:
+                            fig = go.Figure()
+                            fig.add_trace(go.Bar(
+                                name='Operating CF',
+                                x=[d['Period'] for d in df_display],
+                                y=[d['Operating CF'] for d in df_display],
+                                marker_color='#10B981'
+                            ))
+                            fig.add_trace(go.Bar(
+                                name='Free Cash Flow',
+                                x=[d['Period'] for d in df_display],
+                                y=[d['Free Cash Flow'] for d in df_display],
+                                marker_color='#3B82F6'
+                            ))
+                            fig.update_layout(
+                                title="Cash Flow Trends",
+                                template="plotly_dark",
+                                hovermode='x unified',
+                                height=400
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning("No cash flow data available for this period.")
+                else:
+                    st.warning("⚠️ Enable Alpha Vantage API to view cash flow statements. Add your API key to `.env` file.")
+
         
         # ==================== RATIOS TAB ====================
         elif analysis_type == "Ratios":
