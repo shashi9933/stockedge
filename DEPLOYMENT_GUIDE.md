@@ -1,54 +1,398 @@
-# StockSense Deployment Guide
+# StockSense Deployment Guide (React + FastAPI)
 
-## Deployment Options for Streamlit Apps (FREE)
+## 🚀 Deployment Overview
 
-### 1. **Streamlit Cloud** (RECOMMENDED - Easiest)
-- **Cost**: Free tier available
-- **Deployment Time**: < 2 minutes
-- **Pros**: Automatic deployment from GitHub, free SSL, custom domain support
-- **URL**: https://share.streamlit.io/
-
-### 2. **Heroku** (Free tier limited)
-- **Cost**: Free tier ending (was free, now requires paid plan)
-- **Alternative**: Use alternative free platforms
-
-### 3. **Railway** (New option - Free tier)
-- **Cost**: Free starter tier
-- **Deployment Time**: 5-10 minutes
-- **URL**: https://railway.app
-
-### 4. **Render** (Free tier)
-- **Cost**: Free tier available
-- **Deployment Time**: 10-15 minutes
-- **URL**: https://render.com
-
-### 5. **Hugging Face Spaces**
-- **Cost**: Completely free
-- **Deployment Time**: 5 minutes
-- **URL**: https://huggingface.co/spaces
+Your application uses **2 separate repositories** requiring separate deployment:
+- **Frontend**: React + Vite → Deploy to Vercel/Netlify
+- **Backend**: FastAPI → Deploy to Railway/Render
 
 ---
 
-## STEP-BY-STEP DEPLOYMENT PROCESS
+## 📊 Recommended Stack (2026)
 
-### PHASE 1: GitHub Setup (Required for all options)
+### ✅ BEST OPTION (Free & Easy)
+| Component | Platform | Cost | Setup Time |
+|-----------|----------|------|-----------|
+| Frontend | **Vercel** | Free | 5 min |
+| Backend | **Railway** | Free | 10 min |
+| **Total** | - | **$0/month** | **15 min** |
 
-#### Step 1: Initialize Git Repository
-```bash
-cd e:\Coding\stocksense\StockSense
-git init
+### ✅ ALTERNATIVE
+| Component | Platform | Cost | Setup Time |
+|-----------|----------|------|-----------|
+| Frontend | **Netlify** | Free | 5 min |
+| Backend | **Render** | Free | 10 min |
+| **Total** | - | **$0/month** | **15 min** |
+
+---
+
+## 🎯 QUICK START DEPLOYMENT (15 minutes)
+
+### Prerequisites
+- GitHub account (already set up)
+- Vercel account (free)
+- Railway account (free)
+- Both repos already pushed to GitHub
+
+### Your Repos
+- Frontend: https://github.com/shashi9933/stocksense_frontend.git
+- Backend: https://github.com/shashi9933/stocksense_backend.git
+
+---
+
+## STEP 1: Deploy Frontend to Vercel (5 minutes)
+
+### A. Create Vercel Account
+1. Go to **vercel.com**
+2. Click "Sign Up"
+3. Select "GitHub"
+4. Authorize your GitHub account
+5. Create free account
+
+### B. Import Frontend Project
+1. Click "New Project"
+2. Select "Import Git Repository"
+3. Search for **stocksense_frontend**
+4. Click "Import"
+
+### C. Configure Build Settings
+Vercel auto-detects Vite. Verify:
+- **Framework**: Vite
+- **Build Command**: `npm run build`
+- **Output Directory**: `dist`
+- **Install Command**: `npm install --legacy-peer-deps`
+
+### D. Add Environment Variables
+1. Click "Environment Variables"
+2. Add:
+   ```
+   Name: VITE_API_URL
+   Value: https://stocksense-backend.railway.app
+   ```
+   (We'll get the exact Railway URL in next step)
+
+### E. Deploy
+1. Click "Deploy"
+2. Wait for build (~2-3 minutes)
+3. Get your URL: `https://stocksense-frontend-xxx.vercel.app`
+
+---
+
+## STEP 2: Deploy Backend to Railway (10 minutes)
+
+### A. Create Railway Account
+1. Go to **railway.app**
+2. Click "Login"
+3. Select "Continue with GitHub"
+4. Authorize GitHub account
+
+### B. New Project
+1. Click "New Project"
+2. Select "Deploy from GitHub repo"
+3. Search for **stocksense_backend**
+4. Click "Import and Deploy"
+
+### C. Configure Backend
+1. Wait for auto-detection (should find Python)
+2. If needed, set **Start Command**:
+   ```bash
+   uvicorn main:app --host 0.0.0.0 --port $PORT
+   ```
+
+### D. Add Environment Variables
+1. Go to Variables section
+2. Add:
+   ```
+   PYTHONUNBUFFERED=1
+   PORT=8000
+   ```
+
+### E. Deploy & Get URL
+1. Click "Deploy"
+2. Wait for build (~3-5 minutes)
+3. Get your backend URL: `https://stocksense-backend-xxx.railway.app`
+
+### F. Test Backend
+1. Visit: `https://your-backend-url/docs`
+2. Should see Swagger UI
+3. Try the `/api/popular-stocks` endpoint
+4. Should get JSON response
+
+---
+
+## STEP 3: Connect Frontend to Backend (2 minutes)
+
+### A. Update Vercel Environment Variable
+1. Go to Vercel Dashboard
+2. Project: **stocksense_frontend**
+3. Settings → Environment Variables
+4. Update `VITE_API_URL`:
+   ```
+   VITE_API_URL=https://your-railway-backend-url
+   ```
+   (Use the exact URL from Railway)
+
+### B. Redeploy Frontend
+1. Vercel auto-redeploys on git push
+2. Or: Deployments → Click latest → Redeploy
+3. Wait for build (~2 minutes)
+
+### C. Test Connection
+1. Visit your Vercel frontend URL
+2. Open DevTools (F12) → Network tab
+3. Search for a stock (e.g., "AAPL")
+4. Watch Network tab for API calls
+5. Should see calls to your backend URL
+6. Data should load correctly
+
+---
+
+## 🔐 CORS Configuration (If API Errors)
+
+If you get CORS errors in browser console:
+
+### Update Backend (main.py)
+```python
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://stocksense-frontend-xxx.vercel.app",  # Your Vercel URL
+        "http://localhost:5173",  # Local dev
+        "http://localhost:3000",  # Alternative local
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 ```
 
-#### Step 2: Add Your Files
-```bash
-git add .
-git commit -m "Initial commit: StockSense application"
+Then:
+1. Commit and push to GitHub
+2. Railway auto-rebuilds
+3. Redeploy Frontend in Vercel
+4. Test again
+
+---
+
+## 📋 Verification Checklist
+
+After deployment, test these:
+
+### Frontend
+- [ ] Website loads (no blank page)
+- [ ] Sidebar visible and clickable
+- [ ] Page navigation works
+- [ ] No console errors (F12)
+- [ ] Mobile responsive (zoom to 50%)
+
+### Backend
+- [ ] API docs work: `/docs` endpoint
+- [ ] Health check: `GET /` returns success
+- [ ] Stock search: `GET /api/search?query=AAPL` returns data
+- [ ] Popular stocks: `GET /api/popular-stocks` works
+
+### Integration
+- [ ] Frontend can call backend
+- [ ] Data loads in frontend
+- [ ] Charts/indicators display
+- [ ] Search finds stocks
+- [ ] No network errors
+
+---
+
+## 🌐 Custom Domain (Optional - $10-15/year)
+
+### A. Buy Domain
+- GoDaddy, Namecheap, Google Domains
+- Cost: ~$10-15/year
+
+### B. Point to Vercel
+1. Vercel Dashboard → Project Settings
+2. Domains → Add Domain
+3. Follow Vercel's DNS instructions
+4. Add DNS records in domain provider
+5. Takes 15-60 minutes to propagate
+
+### C. Custom Backend URL
+1. Railway → Project Settings
+2. Custom Domain
+3. Add your domain
+4. Update CORS and frontend env variables
+5. Redeploy both
+
+---
+
+## 🔄 Auto-Deployment Setup
+
+Both platforms auto-deploy on GitHub push:
+
+### Frontend (Vercel)
+- Every push to `main` → Auto builds & deploys
+- Staging deployments for PRs available
+- Rollback to previous versions anytime
+
+### Backend (Railway)
+- Every push to `main` → Auto builds & deploys
+- View logs in Railway dashboard
+- One-click redeploy if needed
+
+---
+
+## 📊 Cost Breakdown
+
+### Option 1: Free (Recommended for MVP)
+```
+Vercel Frontend:  $0   (100 GB bandwidth/month free)
+Railway Backend:  $0   (Free tier sufficient for <1000 users)
+Domain:           $0   (optional, ~$1/month if added)
+────────────────────────
+Monthly Total:    $0
 ```
 
-#### Step 3: Create Main Branch
-```bash
-git branch -M main
+### Option 2: Production Scale ($30-50/month)
 ```
+Vercel Pro:       $20  (Unlimited deployments)
+Railway Paid:     $5-15 (More compute)
+Database:         $15+ (PostgreSQL, if needed)
+────────────────────────
+Monthly Total:    $40-50
+```
+
+---
+
+## 🚨 Common Issues & Fixes
+
+### Issue 1: "Cannot connect to API"
+**Error**: Frontend shows "Failed to fetch"
+**Cause**: Wrong backend URL in `VITE_API_URL`
+**Fix**: 
+1. Double-check Railway backend URL
+2. Update Vercel environment variable
+3. Redeploy frontend
+
+### Issue 2: "CORS error in console"
+**Error**: "Access-Control-Allow-Origin" error
+**Cause**: Frontend URL not in backend CORS allowed list
+**Fix**:
+1. Update backend `main.py` CORS origins
+2. Add your Vercel URL to allowed origins
+3. Commit, push, Railway auto-rebuilds
+4. Redeploy frontend
+
+### Issue 3: "502 Bad Gateway"
+**Error**: Backend returns error on API call
+**Cause**: Backend crashed or not responding
+**Fix**:
+1. Check Railway logs (Project → Logs tab)
+2. Look for Python errors
+3. Click Redeploy button
+4. Check if API dependencies installed
+
+### Issue 4: "Build fails in Vercel"
+**Error**: Deployment shows "Build failed"
+**Cause**: Missing dependencies or build error
+**Fix**:
+1. Check Vercel build logs
+2. Ensure `npm install` runs correctly
+3. Verify `npm run build` works locally
+4. Check for missing environment variables
+
+### Issue 5: "Blank page on frontend"
+**Error**: Website loads but shows nothing
+**Cause**: Build output wrong or React not mounting
+**Fix**:
+1. Check Vercel logs for build errors
+2. Ensure `dist/index.html` exists
+3. Check browser console (F12) for JS errors
+4. Try hard refresh (Ctrl+Shift+R)
+
+---
+
+## ✅ Full Deployment Checklist
+
+```
+PRE-DEPLOYMENT
+[ ] Frontend repo pushed to GitHub
+[ ] Backend repo pushed to GitHub
+[ ] Both repos are public
+[ ] GitHub account verified
+
+FRONTEND DEPLOYMENT (VERCEL)
+[ ] Vercel account created
+[ ] Frontend project imported
+[ ] Build command correct
+[ ] Output directory: dist
+[ ] Deployment successful
+[ ] URL obtained & noted
+
+BACKEND DEPLOYMENT (RAILWAY)
+[ ] Railway account created
+[ ] Backend project imported
+[ ] Start command set
+[ ] Environment variables added
+[ ] Deployment successful
+[ ] URL obtained & noted
+[ ] API docs accessible (/docs)
+
+INTEGRATION
+[ ] Frontend environment variables updated
+[ ] VITE_API_URL points to backend
+[ ] Frontend redeployed
+[ ] No CORS errors in console
+[ ] API calls working
+[ ] Data loading correctly
+
+TESTING
+[ ] Frontend loads without errors
+[ ] All pages accessible
+[ ] Stock search works
+[ ] Charts display data
+[ ] No 404 errors
+[ ] Mobile responsive
+[ ] No console errors (F12)
+
+FINAL
+[ ] Production URLs documented
+[ ] Error monitoring setup
+[ ] Performance acceptable
+[ ] All features working
+[ ] Ready for users!
+```
+
+---
+
+## 🎯 Next Steps After Deployment
+
+### Week 1
+- Monitor logs for errors
+- Get user feedback
+- Fix any issues
+- Document setup process
+
+### Month 1
+- Analyze performance metrics
+- Optimize slow endpoints
+- Scale if traffic increases
+- Add monitoring alerts
+
+### Ongoing
+- Weekly: Check logs & metrics
+- Monthly: Security updates
+- Quarterly: Major feature releases
+- Yearly: Infrastructure review
+
+---
+
+## 📞 Troubleshooting Links
+
+- **Vercel Issues**: https://vercel.com/support
+- **Railway Issues**: https://docs.railway.app
+- **FastAPI Deployment**: https://fastapi.tiangolo.com/deployment
+- **Vite Build Issues**: https://vitejs.dev/guide
 
 #### Step 4: Add Remote Repository
 ```bash
